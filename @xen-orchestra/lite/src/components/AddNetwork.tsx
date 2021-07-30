@@ -5,6 +5,7 @@ import { withState } from 'reaclette'
 import Button from './Button'
 import Input from './Input'
 import IntlMessage from './IntlMessage'
+import Select, { Options } from './Select'
 import { alert } from './Modal'
 
 import XapiConnection, { ObjectsByType, Pif, PifMetrics } from '../libs/xapi'
@@ -35,6 +36,18 @@ interface Computed {
   pifsMetrics?: Map<string, PifMetrics>
 }
 
+const OPTIONS_RENDER_PIF: Options<Pif> = {
+  render: (pif, additionalProps) =>
+    `${pif.device} (${
+      additionalProps?.pifsMetrics?.find((metrics: PifMetrics) => metrics.$ref === pif.metrics)?.device_name ??
+      'unknown'
+    })`,
+  value: pif => pif.$id,
+}
+const OPTIONS_RENDER_BOND_MODE: Options<string[]> = {
+  render: mode => mode,
+  value: mode => mode,
+}
 const BOND_MODE = ['balance-slb', 'active-backup', 'lacp']
 
 const AddNetwork = withState<State, Props, Effects, Computed, ParentState, ParentEffects>(
@@ -75,6 +88,7 @@ const AddNetwork = withState<State, Props, Effects, Computed, ParentState, Paren
             await Promise.all(
               pifsRefList.map(pifs => this.state.xapi.call('Bond.create', networkRef, pifs, '', bondMode))
             )
+            this.effects._toggleBonded()
           }
 
           if (typeof pifsId === 'string' && pifsId !== '') {
@@ -87,10 +101,9 @@ const AddNetwork = withState<State, Props, Effects, Computed, ParentState, Paren
           }
           this.effects._resetForm()
         } catch (error) {
-          alert({ message: <p>{error.message}</p>, title: <p>Network creation</p> })
+          alert({ message: <p>{error.message}</p>, title: <IntlMessage id='networkCreation' /> })
           console.error(error)
           if (networkRef !== undefined) {
-            console.log(networkRef)
             await this.state.xapi.call('network.destroy', networkRef)
           }
           return
@@ -111,80 +124,65 @@ const AddNetwork = withState<State, Props, Effects, Computed, ParentState, Paren
           <label>
             <IntlMessage id='bondedNetwork' />
           </label>
-          <Input type='checkbox' name='bonded' checked={state.isBonded} onChange={effects._toggleBonded} />
+          <Input checked={state.isBonded} name='bonded' onChange={effects._toggleBonded} type='checkbox' />
         </div>
         <div>
           <label>
             <IntlMessage id='interface' />
           </label>
-          <select name='pif' multiple={state.isBonded} required={state.isBonded}>
-            {!state.isBonded && (
-              <IntlMessage id='selectPif'>
-                {message => (
-                  <option selected value=''>
-                    {message}
-                  </option>
-                )}
-              </IntlMessage>
-            )}
-            {state.pifs
+          <Select
+            additionalProps={{ pifsMetrics: state.pifsMetrics }}
+            collection={state.pifs
               ?.filter(
                 pif => pif.VLAN === -1 && pif.bond_slave_of === 'OpaqueRef:NULL' && pif.host === pif.$pool.master
               )
               .sortBy(pif => pif.device)
-              .map(pif => (
-                <option key={pif.$id} value={pif.$id}>
-                  {`${pif.device} (${
-                    state.pifsMetrics?.find(metrics => metrics.$ref === pif.metrics)?.device_name ?? 'unknown'
-                  })`}
-                </option>
-              ))}
-          </select>
+              .valueSeq()
+              .toArray()}
+            multiple={state.isBonded}
+            name='pif'
+            optionsRender={OPTIONS_RENDER_PIF}
+            placeholder='selectPif'
+            required={state.isBonded}
+          />
         </div>
         <div>
           <label>
             <IntlMessage id='name' />
           </label>
-          <Input type='text' name='networkName' />
+          <Input name='networkName' required type='text' />
         </div>
         <div>
           <label>
             <IntlMessage id='description' />
           </label>
-          <Input type='text' name='desc' />
+          <Input name='desc' type='text' />
         </div>
         <div>
           <label>
             <IntlMessage id='mtu' />
           </label>
-          <Input type='number' placeholder='Default: 1500' name='mtu' />
+          <Input name='mtu' placeholder='Default: 1500' type='number' />
         </div>
         {state.isBonded ? (
           <div>
             <label>
               <IntlMessage id='bondMode' />
             </label>
-            <select name='bondMode'>
-              <IntlMessage id='selectBondMode'>
-                {message => (
-                  <option selected value=''>
-                    {message}
-                  </option>
-                )}
-              </IntlMessage>
-              {BOND_MODE.map(mode => (
-                <option key={mode} value={mode}>
-                  {mode}
-                </option>
-              ))}
-            </select>
+            <Select
+              collection={BOND_MODE}
+              name='bondMode'
+              optionsRender={OPTIONS_RENDER_BOND_MODE}
+              placeholder='selectBondMode'
+              required
+            />
           </div>
         ) : (
           <div>
             <label>
               <IntlMessage id='vlan' />
             </label>
-            <Input type='number' placeholder='No VLAN if empty' name='vlan' />
+            <Input name='vlan' placeholder='No VLAN if empty' type='number' />
           </div>
         )}
         <Button type='submit'>

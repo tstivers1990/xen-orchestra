@@ -62,7 +62,9 @@ const PoolNetworks = withState<State, Props, Effects, Computed, ParentState, Par
   ({ state }) => (
     <Switch>
       <Route exact path='/pool'>
-        <Link to='pool/add/network'>Add network</Link>
+        <Link to='pool/add/network'>
+          <IntlMessage id='addNetwork' />
+        </Link>
         <Table
           collection={state.managementPifs}
           columns={COLUMNS}
