@@ -34,7 +34,6 @@ background-color: #e4dfdf;
   padding: 5px;
 `
 const StylesOption = styled.option`
-color: #2a99ff;
 `
 
 const Select = withState<State, Props, Effects, Computed, ParentState, ParentEffects>(
