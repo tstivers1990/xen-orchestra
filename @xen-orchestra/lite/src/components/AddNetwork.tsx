@@ -55,7 +55,7 @@ const AddNetwork = withState<State, Props, Effects, Computed, ParentState, Paren
         const desc: string = current?.desc.value || 'Created with Xen Orchestra Lite'
         const mtu = +current?.mtu.value || 1500
         const name: string | undefined = current?.networkName.value
-        const pifsRef: string | string[] | undefined = this.state.isBonded
+        const pifsId: string | string[] | undefined = this.state.isBonded
           ? Array.from<HTMLOptionElement>(current?.pif.selectedOptions).map(({ value }) => value)
           : current?.pif.value
         const vlan = +current?.vlan?.value || 0
@@ -70,17 +70,20 @@ const AddNetwork = withState<State, Props, Effects, Computed, ParentState, Paren
             VLAN: vlan,
           })) as string
 
-          if (this.state.isBonded && Array.isArray(pifsRef)) {
-            const pifsRefList = pifsRef.map(pifsRef =>
-              this.state.pifs?.find(pif => pif.$ref === pifsRef)?.$network.$PIFs.map(pif => pif.$ref)
-            )
+          if (this.state.isBonded && Array.isArray(pifsId)) {
+            const pifsRefList = pifsId.map(pifId => this.state.pifs?.get(pifId)?.$network.PIFs)
             await Promise.all(
               pifsRefList.map(pifs => this.state.xapi.call('Bond.create', networkRef, pifs, '', bondMode))
             )
           }
 
-          if (typeof pifsRef === 'string' && pifsRef !== '') {
-            await this.state.xapi.call('pool.create_VLAN_from_PIF', pifsRef, networkRef, vlan)
+          if (typeof pifsId === 'string' && pifsId !== '') {
+            await this.state.xapi.call(
+              'pool.create_VLAN_from_PIF',
+              this.state.pifs?.get(pifsId)?.$ref,
+              networkRef,
+              vlan
+            )
           }
           this.effects._resetForm()
         } catch (error) {
@@ -130,7 +133,7 @@ const AddNetwork = withState<State, Props, Effects, Computed, ParentState, Paren
               )
               .sortBy(pif => pif.device)
               .map(pif => (
-                <option key={pif.$id} value={pif.$ref}>
+                <option key={pif.$id} value={pif.$id}>
                   {`${pif.device} (${
                     state.pifsMetrics?.find(metrics => metrics.$ref === pif.metrics)?.device_name ?? 'unknown'
                   })`}

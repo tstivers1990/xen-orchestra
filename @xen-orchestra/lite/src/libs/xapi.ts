@@ -22,7 +22,7 @@ interface types {
 // XAPI types ---
 
 export interface Network extends XapiObject {
-  $PIFs: Pif[]
+  PIFs: string[]
 }
 
 export interface PifMetrics extends XapiObject {
