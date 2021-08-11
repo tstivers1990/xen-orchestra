@@ -4,8 +4,9 @@ import { TreeItem, TreeView } from '@material-ui/lab'
 import { withState } from 'reaclette'
 import { Seq } from 'immutable'
 
-import Icon from '../components/Icon'
 import LinkWrapper from './LinkWrapper'
+
+import Icon from '../components/Icon'
 
 interface ParentState {}
 
