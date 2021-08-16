@@ -46,6 +46,9 @@ module.exports = {
     ],
   },
   resolve: {
+    alias: {
+      dns: false,
+    },
     extensions: ['.tsx', '.ts', '.js'],
   },
   devtool: __PROD__ ? 'source-map' : 'eval-cheap-module-source-map',
@@ -55,7 +58,7 @@ module.exports = {
       template: resolveApp('public/index.html'),
       favicon: resolveApp('public/favicon.ico'),
     }),
-    new webpack.EnvironmentPlugin({ XAPI_HOST: '' }),
+    new webpack.EnvironmentPlugin({ XAPI_HOST: '', NPM_VERSION: require('./package.json').version }),
     new (require('node-polyfill-webpack-plugin'))(),
   ].filter(Boolean),
 }

@@ -1,10 +1,9 @@
 {
   "private": false,
   "name": "@xen-orchestra/fs",
-  "version": "0.13.1",
+  "version": "0.17.0",
   "license": "AGPL-3.0-or-later",
   "description": "The File System for Xen Orchestra backups.",
-  "keywords": [],
   "homepage": "https://github.com/vatesfr/xen-orchestra/tree/master/@xen-orchestra/fs",
   "bugs": "https://github.com/vatesfr/xen-orchestra/issues",
   "repository": {
@@ -14,30 +13,27 @@
   },
   "preferGlobal": true,
   "main": "dist/",
-  "files": [
-    "dist/"
-  ],
   "engines": {
-    "node": ">=8.10"
+    "node": ">=14"
   },
   "dependencies": {
     "@marsaud/smb2": "^0.17.2",
     "@sindresorhus/df": "^3.1.1",
     "@sullux/aws-sdk": "^1.0.5",
+    "@vates/coalesce-calls": "^0.1.0",
     "@xen-orchestra/async-map": "^0.1.2",
     "aws-sdk": "^2.686.0",
     "decorator-synchronized": "^0.5.0",
     "execa": "^5.0.0",
     "fs-extra": "^9.0.0",
     "get-stream": "^6.0.0",
-    "limit-concurrency-decorator": "^0.4.0",
+    "limit-concurrency-decorator": "^0.5.0",
     "lodash": "^4.17.4",
-    "promise-toolbox": "^0.17.0",
+    "promise-toolbox": "^0.19.2",
     "proper-lockfile": "^4.1.2",
     "readable-stream": "^3.0.6",
     "through2": "^4.0.2",
-    "tmp": "^0.2.1",
-    "xo-remote-parser": "^0.6.0"
+    "xo-remote-parser": "^0.7.0"
   },
   "devDependencies": {
     "@babel/cli": "^7.0.0",
@@ -46,12 +42,10 @@
     "@babel/plugin-proposal-function-bind": "^7.0.0",
     "@babel/plugin-proposal-nullish-coalescing-operator": "^7.4.4",
     "@babel/preset-env": "^7.0.0",
-    "@babel/preset-flow": "^7.0.0",
     "async-iterator-to-stream": "^1.1.0",
     "babel-plugin-lodash": "^3.3.2",
     "cross-env": "^7.0.2",
     "dotenv": "^8.0.0",
-    "index-modules": "^0.3.0",
     "rimraf": "^3.0.0"
   },
   "scripts": {

@@ -1,22 +1,30 @@
-const findLast = require('lodash/findLast')
-const ignoreErrors = require('promise-toolbox/ignoreErrors')
-const keyBy = require('lodash/keyBy')
-const mapValues = require('lodash/mapValues')
-const { asyncMap } = require('@xen-orchestra/async-map')
+const assert = require('assert')
+const findLast = require('lodash/findLast.js')
+const ignoreErrors = require('promise-toolbox/ignoreErrors.js')
+const keyBy = require('lodash/keyBy.js')
+const mapValues = require('lodash/mapValues.js')
+const { asyncMap, asyncMapSettled } = require('@xen-orchestra/async-map')
 const { createLogger } = require('@xen-orchestra/log')
+const { defer } = require('golike-defer')
 const { formatDateTime } = require('@xen-orchestra/xapi')
 
-const { ContinuousReplicationWriter } = require('./_ContinuousReplicationWriter')
-const { DeltaBackupWriter } = require('./_DeltaBackupWriter')
-const { DisasterRecoveryWriter } = require('./_DisasterRecoveryWriter')
-const { exportDeltaVm } = require('./_deltaVm')
-const { forkStreamUnpipe } = require('./_forkStreamUnpipe')
-const { FullBackupWriter } = require('./_FullBackupWriter')
-const { getOldEntries } = require('./_getOldEntries')
-const { Task } = require('./Task')
-const { watchStreamSize } = require('./_watchStreamSize')
+const { DeltaBackupWriter } = require('./writers/DeltaBackupWriter.js')
+const { DeltaReplicationWriter } = require('./writers/DeltaReplicationWriter.js')
+const { exportDeltaVm } = require('./_deltaVm.js')
+const { forkStreamUnpipe } = require('./_forkStreamUnpipe.js')
+const { FullBackupWriter } = require('./writers/FullBackupWriter.js')
+const { FullReplicationWriter } = require('./writers/FullReplicationWriter.js')
+const { getOldEntries } = require('./_getOldEntries.js')
+const { Task } = require('./Task.js')
+const { watchStreamSize } = require('./_watchStreamSize.js')
 
 const { debug, warn } = createLogger('xo:backups:VmBackup')
+
+const asyncEach = async (iterable, fn, thisArg = iterable) => {
+  for (const item of iterable) {
+    await fn.call(thisArg, item)
+  }
+}
 
 const forkDeltaExport = deltaExport =>
   Object.create(deltaExport, {
@@ -62,12 +70,12 @@ exports.VmBackup = class VmBackup {
 
     // Create writers
     {
-      const writers = []
+      const writers = new Set()
       this._writers = writers
 
       const [BackupWriter, ReplicationWriter] = this._isDelta
-        ? [DeltaBackupWriter, ContinuousReplicationWriter]
-        : [FullBackupWriter, DisasterRecoveryWriter]
+        ? [DeltaBackupWriter, DeltaReplicationWriter]
+        : [FullBackupWriter, FullReplicationWriter]
 
       const allSettings = job.settings
 
@@ -77,7 +85,7 @@ exports.VmBackup = class VmBackup {
           ...allSettings[remoteId],
         }
         if (targetSettings.exportRetention !== 0) {
-          writers.push(new BackupWriter(this, remoteId, targetSettings))
+          writers.add(new BackupWriter({ backup: this, remoteId, settings: targetSettings }))
         }
       })
       srs.forEach(sr => {
@@ -86,9 +94,28 @@ exports.VmBackup = class VmBackup {
           ...allSettings[sr.uuid],
         }
         if (targetSettings.copyRetention !== 0) {
-          writers.push(new ReplicationWriter(this, sr, targetSettings))
+          writers.add(new ReplicationWriter({ backup: this, sr, settings: targetSettings }))
         }
       })
+    }
+  }
+
+  // calls fn for each function, warns of any errors, and throws only if there are no writers left
+  async _callWriters(fn, warnMessage, parallel = true) {
+    const writers = this._writers
+    if (writers.size === 0) {
+      return
+    }
+    await (parallel ? asyncMap : asyncEach)(writers, async function (writer) {
+      try {
+        await fn(writer)
+      } catch (error) {
+        this.delete(writer)
+        warn(warnMessage, { error, writer: writer.constructor.name })
+      }
+    })
+    if (writers.size === 0) {
+      throw new Error('all targets have failed, step: ' + warnMessage)
     }
   }
 
@@ -114,7 +141,8 @@ exports.VmBackup = class VmBackup {
 
     const settings = this._settings
 
-    const doSnapshot = this._isDelta || vm.power_state === 'Running' || settings.snapshotRetention !== 0
+    const doSnapshot =
+      this._isDelta || (!settings.offlineBackup && vm.power_state === 'Running') || settings.snapshotRetention !== 0
     if (doSnapshot) {
       await Task.run({ name: 'snapshot' }, async () => {
         if (!settings.bypassVdiChainsCheck) {
@@ -146,29 +174,28 @@ exports.VmBackup = class VmBackup {
   async _copyDelta() {
     const { exportedVm } = this
     const baseVm = this._baseVm
+    const fullVdisRequired = this._fullVdisRequired
+
+    const isFull = fullVdisRequired === undefined || fullVdisRequired.size !== 0
+
+    await this._callWriters(writer => writer.prepare({ isFull }), 'writer.prepare()')
 
     const deltaExport = await exportDeltaVm(exportedVm, baseVm, {
-      fullVdisRequired: this._fullVdisRequired,
+      fullVdisRequired,
     })
-    const sizeContainers = mapValues(deltaExport.streams, watchStreamSize)
+    const sizeContainers = mapValues(deltaExport.streams, stream => watchStreamSize(stream))
 
     const timestamp = Date.now()
 
-    await asyncMap(this._writers, async writer => {
-      try {
-        await writer.run({
+    await this._callWriters(
+      writer =>
+        writer.transfer({
           deltaExport: forkDeltaExport(deltaExport),
           sizeContainers,
           timestamp,
-        })
-      } catch (error) {
-        warn('copy failure', {
-          error,
-          target: writer.target,
-          vm: this.vm,
-        })
-      }
-    })
+        }),
+      'writer.transfer()'
+    )
 
     this._baseVm = exportedVm
 
@@ -192,6 +219,8 @@ exports.VmBackup = class VmBackup {
       speed: duration !== 0 ? (size * 1e3) / 1024 / 1024 / duration : 0,
       size,
     })
+
+    await this._callWriters(writer => writer.cleanup(), 'writer.cleanup()')
   }
 
   async _copyFull() {
@@ -204,21 +233,15 @@ exports.VmBackup = class VmBackup {
 
     const timestamp = Date.now()
 
-    await asyncMap(this._writers, async writer => {
-      try {
-        await writer.run({
+    await this._callWriters(
+      writer =>
+        writer.run({
           sizeContainer,
           stream: forkStreamUnpipe(stream),
           timestamp,
-        })
-      } catch (error) {
-        warn('copy failure', {
-          error,
-          target: writer.target,
-          vm: this.vm,
-        })
-      }
-    })
+        }),
+      'writer.run()'
+    )
 
     const { size } = sizeContainer
     const end = Date.now()
@@ -292,14 +315,11 @@ exports.VmBackup = class VmBackup {
     })
 
     const presentBaseVdis = new Map(baseUuidToSrcVdi)
-    const writers = this._writers
-    for (let i = 0, n = writers.length; presentBaseVdis.size !== 0 && i < n; ++i) {
-      await writers[i].checkBaseVdis(presentBaseVdis, baseVm)
-    }
-
-    if (presentBaseVdis.size === 0) {
-      return
-    }
+    await this._callWriters(
+      writer => presentBaseVdis.size !== 0 && writer.checkBaseVdis(presentBaseVdis, baseVm),
+      'writer.checkBaseVdis()',
+      false
+    )
 
     const fullVdisRequired = new Set()
     baseUuidToSrcVdi.forEach((srcVdi, baseUuid) => {
@@ -312,7 +332,19 @@ exports.VmBackup = class VmBackup {
     this._fullVdisRequired = fullVdisRequired
   }
 
-  async run() {
+  run = defer(this.run)
+  async run($defer) {
+    const settings = this._settings
+    assert(
+      !settings.offlineBackup || settings.snapshotRetention === 0,
+      'offlineBackup is not compatible with snapshotRetention'
+    )
+
+    await this._callWriters(async writer => {
+      await writer.beforeBackup()
+      $defer(() => writer.afterBackup())
+    }, 'writer.beforeBackup()')
+
     await this._fetchJobSnapshots()
 
     if (this._isDelta) {
@@ -322,7 +354,7 @@ exports.VmBackup = class VmBackup {
     await this._cleanMetadata()
     await this._removeUnusedSnapshots()
 
-    const { _settings: settings, vm } = this
+    const { vm } = this
     const isRunning = vm.power_state === 'Running'
     const startAfter = isRunning && (settings.offlineBackup ? 'backup' : settings.offlineSnapshot && 'snapshot')
     if (startAfter) {
@@ -335,7 +367,7 @@ exports.VmBackup = class VmBackup {
         ignoreErrors.call(vm.$callAsync('start', false, false))
       }
 
-      if (this._writers.length !== 0) {
+      if (this._writers.size !== 0) {
         await (this._isDelta ? this._copyDelta() : this._copyFull())
       }
     } finally {

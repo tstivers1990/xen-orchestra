@@ -1,23 +1,24 @@
 const { asyncMap, asyncMapSettled } = require('@xen-orchestra/async-map')
-const Disposable = require('promise-toolbox/Disposable')
-const fromCallback = require('promise-toolbox/fromCallback')
-const fromEvent = require('promise-toolbox/fromEvent')
-const pDefer = require('promise-toolbox/defer')
+const Disposable = require('promise-toolbox/Disposable.js')
+const fromCallback = require('promise-toolbox/fromCallback.js')
+const fromEvent = require('promise-toolbox/fromEvent.js')
+const pDefer = require('promise-toolbox/defer.js')
 const pump = require('pump')
 const { basename, dirname, join, normalize, resolve } = require('path')
 const { createLogger } = require('@xen-orchestra/log')
 const { createSyntheticStream, mergeVhd, default: Vhd } = require('vhd-lib')
-const { deduped } = require('@vates/disposable/deduped')
+const { deduped } = require('@vates/disposable/deduped.js')
 const { execFile } = require('child_process')
 const { readdir, stat } = require('fs-extra')
 const { ZipFile } = require('yazl')
 
-const { BACKUP_DIR } = require('./_getVmBackupDir')
-const { cleanVm } = require('./_cleanVm')
-const { getTmpDir } = require('./_getTmpDir')
-const { isMetadataFile, isVhdFile } = require('./_backupType')
-const { listPartitions, LVM_PARTITION_TYPE } = require('./_listPartitions')
-const { lvs, pvs } = require('./_lvm')
+const { BACKUP_DIR } = require('./_getVmBackupDir.js')
+const { cleanVm } = require('./_cleanVm.js')
+const { getTmpDir } = require('./_getTmpDir.js')
+const { isMetadataFile, isVhdFile } = require('./_backupType.js')
+const { isValidXva } = require('./_isValidXva.js')
+const { listPartitions, LVM_PARTITION_TYPE } = require('./_listPartitions.js')
+const { lvs, pvs } = require('./_lvm.js')
 
 const DIR_XO_CONFIG_BACKUPS = 'xo-config-backups'
 exports.DIR_XO_CONFIG_BACKUPS = DIR_XO_CONFIG_BACKUPS
@@ -505,21 +506,14 @@ class RemoteAdapter {
   }
 
   async outputStream(path, input, { checksum = true, validator = noop } = {}) {
-    const handler = this._handler
-    input = await input
-    const tmpPath = `${dirname(path)}/.${basename(path)}`
-    const output = await handler.createOutputStream(tmpPath, {
+    await this._handler.outputStream(path, input, {
       checksum,
       dirMode: this._dirMode,
+      async validator() {
+        await input.task
+        return validator.apply(this, arguments)
+      },
     })
-    try {
-      await Promise.all([fromCallback(pump, input, output), output.checksumWritten, input.task])
-      await validator(tmpPath)
-      await handler.rename(tmpPath, path, { checksum })
-    } catch (error) {
-      await handler.unlink(tmpPath, { checksum })
-      throw error
-    }
   }
 
   async readDeltaVmBackup(metadata) {
@@ -528,7 +522,7 @@ class RemoteAdapter {
     const dir = dirname(metadata._filename)
 
     const streams = {}
-    await asyncMapSettled(Object.entries(vdis), async ([id, vdi]) => {
+    await asyncMapSettled(Object.keys(vdis), async id => {
       streams[`${id}.vhd`] = await createSyntheticStream(handler, join(dir, vhds[id]))
     })
 
@@ -551,8 +545,15 @@ class RemoteAdapter {
   }
 }
 
-RemoteAdapter.prototype.cleanVm = function (vmDir) {
-  return Disposable.use(this._handler.lock(vmDir), () => cleanVm.apply(this, arguments))
-}
+Object.assign(RemoteAdapter.prototype, {
+  cleanVm(vmDir, { lock = true } = {}) {
+    if (lock) {
+      return Disposable.use(this._handler.lock(vmDir), () => cleanVm.apply(this, arguments))
+    } else {
+      return cleanVm.apply(this, arguments)
+    }
+  },
+  isValidXva,
+})
 
 exports.RemoteAdapter = RemoteAdapter

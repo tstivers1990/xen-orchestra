@@ -14,33 +14,13 @@ const configs = {
   '@babel/plugin-proposal-pipeline-operator': {
     proposal: 'minimal',
   },
-  '@babel/preset-env'(pkg) {
-    return {
-      debug: !__TEST__,
+  '@babel/preset-env': {
+    debug: !__TEST__,
 
-      // disabled until https://github.com/babel/babel/issues/8323 is resolved
-      // loose: true,
+    // disabled until https://github.com/babel/babel/issues/8323 is resolved
+    // loose: true,
 
-      shippedProposals: true,
-      targets: (() => {
-        const targets = {}
-
-        if (pkg.browserslist !== undefined) {
-          targets.browsers = pkg.browserslist
-        }
-
-        let node = (pkg.engines || {}).node
-        if (node !== undefined) {
-          const trimChars = '^=>~'
-          while (trimChars.includes(node[0])) {
-            node = node.slice(1)
-          }
-          targets.node = node
-        }
-
-        return targets
-      })(),
-    }
+    shippedProposals: true,
   },
 }
 
@@ -52,21 +32,21 @@ const getConfig = (key, ...args) => {
 // some plugins must be used in a specific order
 const pluginsOrder = ['@babel/plugin-proposal-decorators', '@babel/plugin-proposal-class-properties']
 
-module.exports = function (pkg, plugins, presets) {
-  plugins === undefined && (plugins = {})
-  presets === undefined && (presets = {})
+module.exports = function (pkg, configs = {}) {
+  const plugins = {}
+  const presets = {}
 
   Object.keys(pkg.devDependencies || {}).forEach(name => {
     if (!(name in presets) && PLUGINS_RE.test(name)) {
-      plugins[name] = getConfig(name, pkg)
+      plugins[name] = { ...getConfig(name, pkg), ...configs[name] }
     } else if (!(name in presets) && PRESETS_RE.test(name)) {
-      presets[name] = getConfig(name, pkg)
+      presets[name] = { ...getConfig(name, pkg), ...configs[name] }
     }
   })
 
   return {
     comments: !__PROD__,
-    ignore: __TEST__ ? undefined : [/\.spec\.js$/],
+    ignore: __PROD__ ? [/\.spec\.js$/] : undefined,
     plugins: Object.keys(plugins)
       .map(plugin => [plugin, plugins[plugin]])
       .sort(([a], [b]) => {
@@ -75,5 +55,23 @@ module.exports = function (pkg, plugins, presets) {
         return oA !== -1 && oB !== -1 ? oA - oB : a < b ? -1 : 1
       }),
     presets: Object.keys(presets).map(preset => [preset, presets[preset]]),
+    targets: (() => {
+      const targets = {}
+
+      if (pkg.browserslist !== undefined) {
+        targets.browsers = pkg.browserslist
+      }
+
+      let node = (pkg.engines || {}).node
+      if (node !== undefined) {
+        const trimChars = '^=>~'
+        while (trimChars.includes(node[0])) {
+          node = node.slice(1)
+        }
+        targets.node = node
+      }
+
+      return targets
+    })(),
   }
 }

@@ -26,11 +26,11 @@
     "@babel/cli": "^7.7.4",
     "@babel/core": "^7.7.4",
     "@babel/preset-env": "^7.7.4",
-    "cross": "^1.0.0",
+    "cross-env": "^7.0.2",
     "rimraf": "^3.0.0"
   },
   "dependencies": {
-    "@vates/read-chunk": "^0.1.0"
+    "@vates/read-chunk": "^0.1.2"
   },
   "author": {
     "name": "Vates SAS",

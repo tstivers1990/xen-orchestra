@@ -1,13 +1,5 @@
 module.exports = {
-  extends: [
-    'plugin:eslint-comments/recommended',
-
-    'standard',
-    'standard-jsx',
-    'prettier',
-    'prettier/standard',
-    'prettier/react',
-  ],
+  extends: ['plugin:eslint-comments/recommended', 'standard', 'standard-jsx', 'prettier'],
   globals: {
     __DEV__: true,
     $Dict: true,
@@ -21,19 +13,13 @@ module.exports = {
 
   overrides: [
     {
-      files: ['cli.js', '*-cli.js', '**/*cli*/**/*.js'],
+      files: ['cli.{,c,m}js', '*-cli.{,c,m}js', '**/*cli*/**/*.{,c,m}js'],
       rules: {
         'no-console': 'off',
       },
     },
   ],
 
-  parser: 'babel-eslint',
-  parserOptions: {
-    ecmaFeatures: {
-      legacyDecorators: true,
-    },
-  },
   rules: {
     // disabled because XAPI objects are using camel case
     camelcase: ['off'],
