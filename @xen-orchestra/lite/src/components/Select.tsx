@@ -1,6 +1,6 @@
 import React from 'react'
 import { createStyles, makeStyles, Theme } from '@material-ui/core/styles'
-import { Select as SelectMaterialUi, InputLabel, MenuItem, FormControl, SelectProps } from '@material-ui/core'
+import { FormControl, InputLabel, MenuItem, Select as SelectMaterialUi, SelectProps } from '@material-ui/core'
 import { withState } from 'reaclette'
 
 import IntlMessage from './IntlMessage'
