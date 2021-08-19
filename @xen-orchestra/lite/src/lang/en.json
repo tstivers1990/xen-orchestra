@@ -6,7 +6,9 @@
   "confirmCtrlAltDel": "Send Ctrl+Alt+Del to VM?",
   "connect": "Connect",
   "consoleNotAvailable": "Console is only available for running VMs",
+  "create": "Create",
   "ctrlAltDel": "Ctrl+Alt+Del",
+  "defaultValue": "Default: {value}",
   "description": "Description",
   "device": "Device",
   "disconnect": "Disconnect",
@@ -28,6 +30,6 @@
   "selectBondMode": "Please select a bond mode",
   "selectChoice": "Please select a choice",
   "selectPif": "Please select a PIF",
-  "send": "Send",
-  "vlan": "VLAN"
+  "vlan": "VLAN",
+  "vlanPlaceholder": "No VLAN if empty"
 }

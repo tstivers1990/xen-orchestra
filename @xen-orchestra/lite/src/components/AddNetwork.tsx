@@ -1,4 +1,4 @@
-import React, { FormEventHandler } from 'react'
+import React, { ChangeEvent, FormEventHandler } from 'react'
 import { Map } from 'immutable'
 import { withState } from 'reaclette'
 
@@ -19,6 +19,15 @@ interface ParentState {
 interface State {
   formRef: React.RefObject<HTMLFormElement>
   isBonded: boolean
+  form: {
+    [key: string]: unknown
+    bondModeValue: 'balance-slb' | 'active-backup' | 'lacp' | ''
+    descriptionValue: string
+    mtuValue: string
+    nameLabelValue: string
+    vlanValue: string
+  }
+  pifsIdRef: React.RefObject<any>
 }
 
 interface Props {}
@@ -26,12 +35,14 @@ interface Props {}
 interface ParentEffects {}
 
 interface Effects {
-  _newNetwork: FormEventHandler<HTMLFormElement>
+  _createNetwork: FormEventHandler<HTMLFormElement>
   _resetForm: () => void
   _toggleBonded: () => void
+  _handleChange: (e: ChangeEvent<HTMLInputElement>) => void
 }
 
 interface Computed {
+  collection?: Pif[]
   pifs?: Map<string, Pif>
   pifsMetrics?: Map<string, PifMetrics>
 }
@@ -55,62 +66,75 @@ const AddNetwork = withState<State, Props, Effects, Computed, ParentState, Paren
     initialState: () => ({
       formRef: React.createRef(),
       isBonded: false,
+      form: {
+        bondModeValue: '',
+        descriptionValue: '',
+        mtuValue: '',
+        nameLabelValue: '',
+        vlanValue: '',
+      },
+      pifsIdRef: React.createRef(),
     }),
     computed: {
       pifs: state => state.objectsByType.get('PIF'),
       pifsMetrics: state => state.objectsByType.get('PIF_metrics'),
+      collection: state =>
+        state.pifs
+          ?.filter(pif => pif.VLAN === -1 && pif.bond_slave_of === 'OpaqueRef:NULL' && pif.host === pif.$pool.master)
+          .sortBy(pif => pif.device)
+          .valueSeq()
+          .toArray(),
     },
     effects: {
-      _newNetwork: async function (e) {
+      _handleChange: function (e) {
+        // Reason why values are initialized with empty string and not a undefined value
+        // Warning: A component is changing an uncontrolled input to be controlled.
+        // This is likely caused by the value changing from undefined to a defined value,
+        // which should not happen. Decide between using a controlled or uncontrolled input
+        // element for the lifetime of the component.
+        // More info: https://reactjs.org/link/controlled-components
+        const stateProperty = e.target.name
+        const form = this.state.form
+
+        if (form[stateProperty] !== undefined) {
+          this.state.form = {
+            ...form,
+            [stateProperty]: e.target.value,
+          }
+        }
+      },
+      _createNetwork: async function (e) {
         e.preventDefault()
+
+        const { nameLabelValue, vlanValue, mtuValue, bondModeValue, descriptionValue } = this.state.form
         const { current } = this.state.formRef
-        const bondMode = current?.bondMode?.value
-        const desc: string = current?.desc.value || 'Created with Xen Orchestra Lite'
-        const mtu = +current?.mtu.value || 1500
-        const name: string | undefined = current?.networkName.value
         const pifsId: string | string[] | undefined = this.state.isBonded
           ? Array.from<HTMLOptionElement>(current?.pif.selectedOptions).map(({ value }) => value)
           : current?.pif.value
-        const vlan = +current?.vlan?.value || 0
 
-        let networkRef: string | undefined
         try {
-          networkRef = (await this.state.xapi.call('network.create', {
-            name_label: name,
-            name_description: desc,
-            other_config: { automatic: 'false' },
-            MTU: mtu,
-            VLAN: vlan,
-          })) as string
-
-          if (this.state.isBonded && Array.isArray(pifsId)) {
-            const pifsRefList = pifsId.map(pifId => this.state.pifs?.get(pifId)?.$network.PIFs)
-            await Promise.all(
-              pifsRefList.map(pifs => this.state.xapi.call('Bond.create', networkRef, pifs, '', bondMode))
-            )
-            this.effects._toggleBonded()
-          }
-
-          if (typeof pifsId === 'string' && pifsId !== '') {
-            await this.state.xapi.call(
-              'pool.create_VLAN_from_PIF',
-              this.state.pifs?.get(pifsId)?.$ref,
-              networkRef,
-              vlan
-            )
-          }
+          await this.state.xapi.createNetwork(
+            {
+              name_label: nameLabelValue,
+              name_description: descriptionValue,
+              MTU: +mtuValue,
+              VLAN: +vlanValue,
+            },
+            { pifsId, bondMode: bondModeValue === '' ? undefined : bondModeValue }
+          )
           this.effects._resetForm()
         } catch (error) {
           alert({ message: <p>{error.message}</p>, title: <IntlMessage id='networkCreation' /> })
-          console.error(error)
-          if (networkRef !== undefined) {
-            await this.state.xapi.call('network.destroy', networkRef)
-          }
-          return
         }
       },
       _resetForm: function () {
-        this.state.formRef.current?.reset()
+        Object.keys(this.state.form).forEach(key => {
+          this.state.form = {
+            ...this.state.form,
+            [key]: '',
+          }
+        })
+        this.state.isBonded = false
       },
       _toggleBonded: function () {
         this.state.isBonded = !this.state.isBonded
@@ -119,7 +143,7 @@ const AddNetwork = withState<State, Props, Effects, Computed, ParentState, Paren
   },
   ({ effects, state }) => (
     <>
-      <form onSubmit={effects._newNetwork} ref={state.formRef}>
+      <form onSubmit={effects._createNetwork} ref={state.formRef}>
         <div>
           <label>
             <IntlMessage id='bondedNetwork' />
@@ -132,13 +156,7 @@ const AddNetwork = withState<State, Props, Effects, Computed, ParentState, Paren
           </label>
           <Select
             additionalProps={{ pifsMetrics: state.pifsMetrics }}
-            collection={state.pifs
-              ?.filter(
-                pif => pif.VLAN === -1 && pif.bond_slave_of === 'OpaqueRef:NULL' && pif.host === pif.$pool.master
-              )
-              .sortBy(pif => pif.device)
-              .valueSeq()
-              .toArray()}
+            collection={state.collection}
             multiple={state.isBonded}
             name='pif'
             optionsRender={OPTIONS_RENDER_PIF}
@@ -150,19 +168,40 @@ const AddNetwork = withState<State, Props, Effects, Computed, ParentState, Paren
           <label>
             <IntlMessage id='name' />
           </label>
-          <Input name='networkName' required type='text' />
+          <Input
+            name='nameLabelValue'
+            required
+            type='text'
+            value={state.form.nameLabelValue}
+            onChange={effects._handleChange}
+          />
         </div>
         <div>
           <label>
             <IntlMessage id='description' />
           </label>
-          <Input name='desc' type='text' />
+          <Input
+            name='descriptionValue'
+            value={state.form.descriptionValue}
+            type='text'
+            onChange={effects._handleChange}
+          />
         </div>
         <div>
           <label>
             <IntlMessage id='mtu' />
           </label>
-          <Input name='mtu' placeholder='Default: 1500' type='number' />
+          <IntlMessage id='defaultValue' values={{ value: 1500 }}>
+            {message => (
+              <Input
+                name='mtuValue'
+                placeholder={message?.toString()}
+                type='number'
+                value={state.form.mtuValue}
+                onChange={effects._handleChange}
+              />
+            )}
+          </IntlMessage>
         </div>
         {state.isBonded ? (
           <div>
@@ -182,11 +221,21 @@ const AddNetwork = withState<State, Props, Effects, Computed, ParentState, Paren
             <label>
               <IntlMessage id='vlan' />
             </label>
-            <Input name='vlan' placeholder='No VLAN if empty' type='number' />
+            <IntlMessage id='vlanPlaceholder'>
+              {message => (
+                <Input
+                  name='vlanValue'
+                  placeholder={message?.toString()}
+                  type='number'
+                  value={state.form.vlanValue}
+                  onChange={effects._handleChange}
+                />
+              )}
+            </IntlMessage>
           </div>
         )}
         <Button type='submit'>
-          <IntlMessage id='send' />
+          <IntlMessage id='create' />
         </Button>
       </form>
       <Button onClick={effects._resetForm}>

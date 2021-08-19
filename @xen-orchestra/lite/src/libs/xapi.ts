@@ -195,4 +195,38 @@ export default class XapiConnection extends EventEmitter {
 
     return _xapi.call(method, ...args)
   }
+
+  async createNetwork(
+    newNetwork: { name_label: string; name_description: string; MTU: number; VLAN: number },
+    opts?: {
+      pifsId?: string | string[]
+      bondMode?: 'balance-slb' | 'active-backup' | 'lacp'
+    }
+  ): Promise<void> {
+    const pifs = this.objectsByType.get('PIF')
+    const pifsId = opts?.pifsId
+    let networkRef: string | undefined
+    try {
+      networkRef = (await this.call('network.create', {
+        ...newNetwork,
+        other_config: { automatic: 'false' },
+      })) as string
+
+      if (Array.isArray(pifsId)) {
+        await Promise.all(
+          pifsId.map(pifId => this.call('Bond.create', networkRef, pifs?.get(pifId)?.$network.PIFs, '', opts?.bondMode))
+        )
+        return
+      }
+      if (pifsId !== undefined) {
+        await this.call('pool.create_VLAN_from_PIF', pifs?.get(pifsId)?.$ref, networkRef, newNetwork.VLAN)
+      }
+    } catch (error) {
+      console.error(error)
+      if (networkRef !== undefined) {
+        await this.call('network.destroy', networkRef)
+      }
+      throw error
+    }
+  }
 }
