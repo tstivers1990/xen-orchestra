@@ -1,6 +1,6 @@
 import React from 'react'
 import { createStyles, makeStyles, Theme } from '@material-ui/core/styles'
-import { FormControl, InputLabel, MenuItem, Select as SelectMaterialUi, SelectProps } from '@material-ui/core'
+import { FormControl, MenuItem, Select as SelectMaterialUi, SelectProps } from '@material-ui/core'
 import { withState } from 'reaclette'
 
 import IntlMessage from './IntlMessage'
@@ -9,20 +9,19 @@ type AdditionalProps = Record<string, any>
 
 export type Options<T> = {
   render: { (item: T, additionalProps?: AdditionalProps): React.ReactNode }
-  value: { (item: T, additionalProps?: AdditionalProps): string | ReadonlyArray<string> | number }
+  value: { (item: T, additionalProps?: AdditionalProps): string | number }
 }
 
 interface ParentState {}
 
 interface State {
-  useStyles: () => Record<'formControl' | 'selectEmpty', string>
+  useStyles: () => Record<'formControl', string>
 }
 
 interface Props extends SelectProps {
   additionalProps?: AdditionalProps
-  collection: unknown[] | undefined
-  label?: React.ReactNode
   onChange: (e: React.ChangeEvent<{ value: Props['value'] }>) => void
+  options: unknown[] | undefined
   optionsRender: Options<any>
   value: any
 }
@@ -42,16 +41,12 @@ const Select = withState<State, Props, Effects, Computed, ParentState, ParentEff
             margin: theme.spacing(1),
             minWidth: 120,
           },
-          selectEmpty: {
-            marginTop: theme.spacing(2),
-          },
         })
       ),
     }),
   },
-  ({ additionalProps, collection, effects, label, multiple, optionsRender, resetState, state, required, ...props }) => (
+  ({ additionalProps, effects, multiple, options, optionsRender, resetState, state, required, ...props }) => (
     <FormControl className={state.useStyles().formControl}>
-      {label !== undefined && <InputLabel>{label}</InputLabel>}
       <SelectMaterialUi multiple={multiple} required={required} {...props}>
         {!required && !multiple && (
           <MenuItem value=''>
@@ -60,8 +55,8 @@ const Select = withState<State, Props, Effects, Computed, ParentState, ParentEff
             </em>
           </MenuItem>
         )}
-        {collection?.map((item, index) => (
-          <MenuItem key={index} value={optionsRender.value(item, additionalProps)}>
+        {options?.map(item => (
+          <MenuItem key={optionsRender.value(item, additionalProps)} value={optionsRender.value(item, additionalProps)}>
             {optionsRender.render(item, additionalProps)}
           </MenuItem>
         ))}
