@@ -1,11 +1,12 @@
 import React from 'react'
-import styled from 'styled-components'
-import { FormattedMessage } from 'react-intl'
+import { Dialog, DialogContent, DialogContentText, DialogActions, DialogTitle } from '@material-ui/core'
 import { withState } from 'reaclette'
 
 import Button from './Button'
+import IntlMessage from './IntlMessage'
 
 interface GeneralParamsModal {
+  isSingleButton?: boolean
   message: JSX.Element
   title: JSX.Element
 }
@@ -15,24 +16,13 @@ interface ParamsModal extends GeneralParamsModal {
   onSuccess: (value: string) => void
 }
 
-const StyledModal = styled.div`
-  background-color: white;
-  border: 2px solid black;
-  left: 50%;
-  padding: 15px;
-  position: absolute;
-  top: 20%;
-  transform: translate(-50%, -50%);
-`
-
-export const confirm = ({ message, title }: GeneralParamsModal): Promise<string> =>
-  new Promise((resolve, reject) => modal({ message, onReject: reject, onSuccess: resolve, title }))
-
-const modal = ({ message, onReject, onSuccess, title }: ParamsModal) => {
+let instance: EffectContext<State, Props, Effects, Computed, ParentState, ParentEffects> | undefined
+const modal = ({ isSingleButton = false, message, onReject, onSuccess, title }: ParamsModal) => {
   if (instance === undefined) {
     throw new Error('No modal instance')
   }
 
+  instance.state.isSingleButton = isSingleButton
   instance.state.message = message
   instance.state.onReject = onReject
   instance.state.onSuccess = onSuccess
@@ -40,9 +30,16 @@ const modal = ({ message, onReject, onSuccess, title }: ParamsModal) => {
   instance.state.title = title
 }
 
+export const alert = (params: GeneralParamsModal): Promise<string> =>
+  new Promise((resolve, reject) => modal({ isSingleButton: true, onReject: reject, onSuccess: resolve, ...params }))
+
+export const confirm = (params: GeneralParamsModal): Promise<string> =>
+  new Promise((resolve, reject) => modal({ onReject: reject, onSuccess: resolve, ...params }))
+
 interface ParentState {}
 
 interface State {
+  isSingleButton?: boolean
   message?: JSX.Element
   onReject?: () => void
   onSuccess?: (value: string) => void
@@ -62,10 +59,10 @@ interface Effects {
 
 interface Computed {}
 
-let instance: EffectContext<State, Props, Effects, Computed, ParentState, ParentEffects> | undefined
 const Modal = withState<State, Props, Effects, Computed, ParentState, ParentEffects>(
   {
     initialState: () => ({
+      isSingleButton: false,
       message: undefined,
       onReject: undefined,
       onSuccess: undefined,
@@ -94,20 +91,24 @@ const Modal = withState<State, Props, Effects, Computed, ParentState, ParentEffe
   },
   ({ effects, state }) => {
     const { _reject, _success } = effects
-    const { message, showModal, title } = state
+    const { isSingleButton, message, showModal, title } = state
     return showModal ? (
-      <StyledModal>
-        <p>{title}</p>
-        <p>{message}</p>
-        <footer>
-          <Button onClick={_success}>
-            <FormattedMessage id='ok' />
+      <Dialog open={showModal} onClose={_reject}>
+        <DialogTitle>{title}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>{message}</DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          {!isSingleButton && (
+            <Button onClick={_reject} color='primary'>
+              <IntlMessage id='cancel' />
+            </Button>
+          )}
+          <Button onClick={_success} color='primary'>
+            <IntlMessage id='ok' />
           </Button>
-          <Button onClick={_reject}>
-            <FormattedMessage id='cancel' />
-          </Button>
-        </footer>
-      </StyledModal>
+        </DialogActions>
+      </Dialog>
     ) : null
   }
 )
